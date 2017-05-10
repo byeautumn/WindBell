@@ -1,5 +1,6 @@
 package com.byeautumn.wb.process;
 
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -93,7 +94,7 @@ public class SeriesDataProcessUtil
 	
 	public static void main(String[] args)
 	{
-		String sourceFile = "src/com/byeautumn/wb/input/source/Yahoo/SPX_Daily_All.csv";
+		String sourceFile = "resources/source/Yahoo/SPX_Daily_All.csv";
 		OHLCElementTable bigTable = OHLCUtils.readOHLCDataSourceFile(sourceFile);
 		System.out.println("Big table size: " + bigTable.size());
 		
