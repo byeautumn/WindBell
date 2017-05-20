@@ -94,7 +94,8 @@ public class SeriesDataProcessUtil
 	
 	public static void main(String[] args)
 	{
-		String sourceFile = "resources/source/Yahoo/SPX_Daily_All.csv";
+		System.out.println("user.dir:" + System.getProperty("user.dir"));
+		String sourceFile = "../../WindBell/WindBell/resources/source/Yahoo/SPX_Daily_All.csv";
 		OHLCElementTable bigTable = OHLCUtils.readOHLCDataSourceFile(sourceFile);
 		System.out.println("Big table size: " + bigTable.size());
 		
