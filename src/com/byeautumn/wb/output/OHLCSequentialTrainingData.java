@@ -6,45 +6,148 @@ import com.byeautumn.wb.data.OHLCElementTable;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.List;
+import java.util.*;
 
 /**
  * Created by qiangao on 5/17/2017.
  */
 public class OHLCSequentialTrainingData {
     private static final double MILLION_FACTOR = 0.000001;
-    private List<OHLCElementTable> ohlcElementTableList;
-    private int[] labels;
-    private int timeSeriesLength;
+//    private List<OHLCElementTable> ohlcElementTableList;
+    private List<SequentialFlatRecord> flatData;
+//    private int[] labels;
+//    private int timeSeriesLength;
 
-    public OHLCSequentialTrainingData(List<OHLCElementTable> ohlcElementTables, int[] labels, int timeSeriesLength)
+    private OHLCSequentialTrainingData() {}
+    public OHLCSequentialTrainingData(List<OHLCElementTable> ohlcElementTables)
     {
-        if(null == ohlcElementTables || null == labels || labels.length < 1 || timeSeriesLength < labels.length || ohlcElementTables.size() < 1 || ohlcElementTables.get(0).size() < timeSeriesLength)
+        if(null == ohlcElementTables || ohlcElementTables.size() < 1)
         {
             System.err.println("Invalid input(s) for OHLCSequentialTrainingData generation.");
             return;
         }
-        if(ohlcElementTables.size() > 1)
+
+        buildFlatData(ohlcElementTables);
+    }
+
+    public static OHLCSequentialTrainingData createInstance(List<SequentialFlatRecord> flatData)
+    {
+        if(null == flatData)
         {
-            int sequenceLength = ohlcElementTables.get(0).size();
-            for(OHLCElementTable table : ohlcElementTables)
-            {
-                if(table.size() != sequenceLength)
-                {
-                    System.err.println("The sequence length should be consistent. OHLCSequentialTrainingData generation failed.");
-                    return;
-                }
-            }
+            System.err.println("The sequence length should be consistent. OHLCSequentialTrainingData generation failed.");
+            return null;
         }
 
-        this.ohlcElementTableList = ohlcElementTables;
-        this.labels = labels;
-        this.timeSeriesLength = timeSeriesLength;
+        OHLCSequentialTrainingData ret = new OHLCSequentialTrainingData();
+        ret.flatData = flatData;
+
+        return ret;
+    }
+
+    public List<OHLCSequentialTrainingData> split(int numSequence)
+    {
+        if(numSequence > this.flatData.size())
+        {
+            System.err.println();
+            return null;
+        }
+
+        List<OHLCSequentialTrainingData> trainDataSplits = new ArrayList<>(flatData.size() - numSequence + 1);
+        for(int idx = 0; idx <= flatData.size() - numSequence; ++idx)
+        {
+            List<SequentialFlatRecord> subFlatData = new ArrayList<>(numSequence);
+            for(int secIdx = idx; secIdx < idx + numSequence; ++secIdx)
+            {
+                SequentialFlatRecord flatRecord = this.flatData.get(secIdx).clone();
+                subFlatData.add(flatRecord);
+            }
+
+            OHLCSequentialTrainingData subTrainData = OHLCSequentialTrainingData.createInstance(subFlatData);
+            trainDataSplits.add(subTrainData);
+        }
+
+        return trainDataSplits;
+    }
+
+    private void buildFlatData(List<OHLCElementTable> tableList)
+    {
+        if(null == tableList || tableList.isEmpty())
+        {
+            System.err.println("The OHLCSequentialTrainingData instance is empty. Stop building flat data.");
+            return;
+        }
+
+        if(null == flatData)
+            flatData = new ArrayList<>(tableList.get(0).size());
+
+        //Assume each OHLCElement has 5 values.
+        int feartureSizePerOHLCElement = 5;
+        int featureSize = tableList.size() * feartureSizePerOHLCElement;
+        OHLCElementTable mainTable = tableList.get(0);
+        List<OHLCElement> mainElemList = mainTable.getOHCLElementsSortedByDate();
+        for (int timeSeriesIdx = 0; timeSeriesIdx < mainElemList.size(); ++timeSeriesIdx) {
+            OHLCElement elem = mainElemList.get(timeSeriesIdx);
+            Date date = elem.getDateValue();
+            double[] flatValues = new double[featureSize];
+            if(tableList.size() > 1) {
+                boolean bMissingMatch = false;
+                //Note: idx starts from 1
+                for (int idx = 1; idx < tableList.size(); ++idx) {
+                    OHLCElementTable table = tableList.get(idx);
+                    OHLCElement matchElem = table.getOHLCElement(date);
+                    if (null == matchElem) {
+                        bMissingMatch = true;
+                        break;
+                    }
+
+                    flatValues[feartureSizePerOHLCElement * idx] = matchElem.getOpenValue();
+                    flatValues[feartureSizePerOHLCElement * idx + 1] = matchElem.getHighValue();
+                    flatValues[feartureSizePerOHLCElement * idx + 2] = matchElem.getLowValue();
+                    flatValues[feartureSizePerOHLCElement * idx + 3] = matchElem.getCloseValue();
+                    flatValues[feartureSizePerOHLCElement * idx + 4] = matchElem.getVolumeValue();
+
+                }
+                if (bMissingMatch)
+                    continue;
+            }
+            flatValues[0] = elem.getOpenValue();
+            flatValues[1] = elem.getHighValue();
+            flatValues[2] = elem.getLowValue();
+            flatValues[3] = elem.getCloseValue();
+            flatValues[4] = elem.getVolumeValue();
+
+            int label = Integer.MIN_VALUE;
+            if(timeSeriesIdx < mainElemList.size() - 1)
+            {
+                OHLCElement nextElem = mainElemList.get(timeSeriesIdx + 1);
+                label = BasicLSTMLabelingManager.generateLabel_7(elem.getCloseValue(), nextElem.getCloseValue());
+            }
+
+            SequentialFlatRecord flatRecord = new SequentialFlatRecord(date, flatValues, label);
+            flatData.add(flatRecord);
+        }
+//        System.out.println("flat data size: " + flatData.size());
+    }
+
+    public String printSelfAsCSV()
+    {
+//        System.out.println("flat data size: " + flatData.size());
+
+        StringBuffer sb = new StringBuffer();
+        for(SequentialFlatRecord flatRecord : flatData)
+        {
+            if(!BasicLSTMLabelingManager.isLabelValid(flatRecord.getLabel()))
+                continue;
+
+            sb.append(flatRecord.printValuesAndLabelWithDateInfoAsCSV());
+            sb.append("\n");
+        }
+        return sb.toString();
     }
 
     public void toCSVFile(String outputFileName) {
-        if (null == ohlcElementTableList) {
-            System.err.println("The OHLCSequentialTrainingData instance is empty. CSV file generation failed.");
+        if (null == flatData) {
+            System.err.println("The flat data is empty. CSV file generation failed.");
             return;
         }
 
@@ -56,33 +159,12 @@ public class OHLCSequentialTrainingData {
             }
         }
 
-
         FileWriter fileWriter = null;
         try
         {
             fileWriter = new FileWriter(outputFileName);
-//            int timeSequenceLength = ohlcElementTableList.get(0).size();
-            int labelLength = labels.length; // labellength could be smaller than parameterLength
-            StringBuffer sb = new StringBuffer();
-            for(int idx = 0; idx < this.timeSeriesLength; ++idx)
-            {
 
-                for (OHLCElementTable table : ohlcElementTableList)
-                {
-                    OHLCElement elem = table.getOHCLElementsSortedByDate().get(idx);
-                    sb.append(elem.getOpenValue()).append(",");
-                    sb.append(elem.getHighValue()).append(",");
-                    sb.append(elem.getLowValue()).append(",");
-                    sb.append(elem.getCloseValue()).append(",");
-                    sb.append(elem.getVolumeValue() * MILLION_FACTOR).append(",");//Volume in million
-                }
-                if(idx < this.timeSeriesLength - labelLength)
-                    sb.append(Integer.MIN_VALUE);
-                else
-                    sb.append(labels[idx]);
-                sb.append(",\n");
-            }
-            fileWriter.write(sb.toString());
+            fileWriter.write(printSelfAsCSV());
 
         } catch (IOException ioe)
         {

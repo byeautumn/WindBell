@@ -22,6 +22,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Calendar;
+import java.util.Date;
 
 /**
  * Created by qiangao on 5/16/2017.
@@ -49,38 +51,6 @@ public class BasicLSTMRunner {
     }
     private MultiLayerNetwork buildNetwork(int numInput, int numLabelClasses)
     {
-//        Updater updater = Updater.ADAGRAD;
-//        MultiLayerConfiguration conf = new NeuralNetConfiguration.Builder()
-//                .seed(12345)
-//                .regularization(true).l2(0.001) //l2 regularization on all layers
-//                .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)
-//                .iterations(1)
-//                .learningRate(0.04)
-//                .list()
-//                .layer(4, new GravesLSTM.Builder()
-//                        .activation(Activation.SOFTSIGN)
-//                        .nIn(50)
-//                        .nOut(50)
-//                        .weightInit(WeightInit.XAVIER)
-//                        .updater(updater)
-//                        .gradientNormalization(GradientNormalization.ClipElementWiseAbsoluteValue)
-//                        .gradientNormalizationThreshold(10)
-//                        .learningRate(0.008)
-//                        .build())
-//                .layer(5, new RnnOutputLayer.Builder(LossFunctions.LossFunction.MCXENT)
-//                        .activation(Activation.SOFTMAX)
-//                        .nIn(50)
-//                        .nOut(4)    //4 possible shapes: circle, square, arc, line
-//                        .updater(updater)
-//                        .weightInit(WeightInit.XAVIER)
-//                        .gradientNormalization(GradientNormalization.ClipElementWiseAbsoluteValue)
-//                        .gradientNormalizationThreshold(10)
-//                        .build())
-//                .pretrain(false).backprop(true)
-//                .backpropType(BackpropType.TruncatedBPTT)
-//                .tBPTTForwardLength(tbpttLength)
-//                .tBPTTBackwardLength(tbpttLength)
-//                .build();
         MultiLayerConfiguration conf = new NeuralNetConfiguration.Builder()
                 .seed(123)    //Random number generator seed for improved repeatability. Optional.
                 .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT).iterations(1)
@@ -90,11 +60,11 @@ public class BasicLSTMRunner {
                 .gradientNormalization(GradientNormalization.ClipElementWiseAbsoluteValue)  //Not always required, but helps with this data set
                 .gradientNormalizationThreshold(0.5)
                 .list()
-                .layer(0, new GravesLSTM.Builder().activation(Activation.TANH).nIn(numInput).nOut(numInput).build())
-                .layer(1, new GravesLSTM.Builder().activation(Activation.TANH).nIn(numInput).nOut(numInput).build())
-                .layer(2, new GravesLSTM.Builder().activation(Activation.TANH).nIn(numInput).nOut(numInput).build())
+                .layer(0, new GravesLSTM.Builder().activation(Activation.TANH).nIn(numInput).nOut(numInput*2).build())
+                .layer(1, new GravesLSTM.Builder().activation(Activation.TANH).nIn(numInput*2).nOut(numInput*2).build())
+                .layer(2, new GravesLSTM.Builder().activation(Activation.TANH).nIn(numInput*2).nOut(numInput*2).build())
                 .layer(3, new RnnOutputLayer.Builder(LossFunctions.LossFunction.MCXENT)
-                        .activation(Activation.SOFTMAX).nIn(numInput).nOut(numLabelClasses).build())
+                        .activation(Activation.SOFTMAX).nIn(numInput*2).nOut(numLabelClasses).build())
                 .pretrain(false).backprop(true).build();
         MultiLayerNetwork net = new MultiLayerNetwork(conf);
         net.init();
@@ -133,8 +103,8 @@ public class BasicLSTMRunner {
 
     private void buildTrainAndTestDataset(String rawDataDirName, double trainDataPercentage, int miniBatchSize)
     {
-        int startIdx = 7528;
-        int endIdx = 16887;
+        int startIdx = 0;
+        int endIdx = 6834;
         int length = endIdx - startIdx + 1;
         int testStartIdx = (int) Math.round(length * trainDataPercentage);
 
@@ -177,12 +147,16 @@ public class BasicLSTMRunner {
     }
 
     public static void main( String[] args ) throws Exception {
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(new Date());
+        System.out.print("Today: " + calendar.get(Calendar.MONTH));
         String inputDirName = "../../WindBell/WindBell/resources/training/BasicLSTMData/SPX";
         int numLabelClasses = 7;
-        int numFeatures = 5;
+        int numFeatures = 12;
         int numEpochs = 5;
         BasicLSTMRunner runner = new BasicLSTMRunner(inputDirName, numLabelClasses, numFeatures);
 
         runner.trainAndValidate(numEpochs);
+
     }
 }
