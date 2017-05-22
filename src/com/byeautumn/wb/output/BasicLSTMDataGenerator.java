@@ -68,7 +68,7 @@ public class BasicLSTMDataGenerator {
 
 //            String outputFileName = Paths.get(outputDir.getAbsolutePath(), symbol + "_" + dateFormat.format(piece.getLatest().getDateValue()) + ".csv").toString();
             String outputFileName = Paths.get(outputDir.getAbsolutePath(), pieceCount + ".csv").toString();
-            trainDataElems.toCSVFile(outputFileName);
+            trainDataElems.generateTrainingCSVFile(outputFileName);
             System.out.println("outputFileName: " + outputFileName);
 
         }
@@ -111,10 +111,13 @@ public class BasicLSTMDataGenerator {
         for(OHLCSequentialTrainingData trainData : trainDataList)
         {
             String outputFileName = Paths.get(outputDir.getAbsolutePath(), pieceCount + ".csv").toString();
-            trainData.toCSVFile(outputFileName);
+            trainData.generateTrainingCSVFile(outputFileName);
             ++pieceCount;
         }
         System.out.println("Total number of csv files generated: " + pieceCount);
+
+        OHLCSequentialTrainingData predictData = trainDataList.get(trainDataList.size() - 1);
+
     }
 
     public static void main(String[] args)

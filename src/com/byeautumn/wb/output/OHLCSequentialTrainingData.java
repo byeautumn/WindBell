@@ -13,10 +13,7 @@ import java.util.*;
  */
 public class OHLCSequentialTrainingData {
     private static final double MILLION_FACTOR = 0.000001;
-//    private List<OHLCElementTable> ohlcElementTableList;
     private List<SequentialFlatRecord> flatData;
-//    private int[] labels;
-//    private int timeSeriesLength;
 
     private OHLCSequentialTrainingData() {}
     public OHLCSequentialTrainingData(List<OHLCElementTable> ohlcElementTables)
@@ -131,13 +128,25 @@ public class OHLCSequentialTrainingData {
 
     public String printSelfAsCSV()
     {
-//        System.out.println("flat data size: " + flatData.size());
+        return printSelfAsCSV(0, flatData.size() - 1, true);
+    }
+
+    public String printSelfAsCSV(int startIdx, int endIdx, boolean bExcludeUnlabeledRecord)
+    {
+        if(startIdx < 0 || endIdx < startIdx)
+        {
+            System.err.println("Invalid input(s).");
+            return "";
+        }
 
         StringBuffer sb = new StringBuffer();
-        for(SequentialFlatRecord flatRecord : flatData)
+        for(int idx = startIdx; idx <= endIdx; ++idx)
         {
-            if(!BasicLSTMLabelingManager.isLabelValid(flatRecord.getLabel()))
-                continue;
+            SequentialFlatRecord flatRecord = flatData.get(idx);
+            if(bExcludeUnlabeledRecord) {
+                if (!BasicLSTMLabelingManager.isLabelValid(flatRecord.getLabel()))
+                    continue;
+            }
 
             sb.append(flatRecord.printValuesAndLabelWithDateInfoAsCSV());
             sb.append("\n");
@@ -145,7 +154,11 @@ public class OHLCSequentialTrainingData {
         return sb.toString();
     }
 
-    public void toCSVFile(String outputFileName) {
+    public void generateTrainingCSVFile(String outputFileName) {
+        generateCSVFile(outputFileName, false);
+    }
+
+    public void generateCSVFile(String outputFileName, boolean bForPrediction) {
         if (null == flatData) {
             System.err.println("The flat data is empty. CSV file generation failed.");
             return;
@@ -163,8 +176,10 @@ public class OHLCSequentialTrainingData {
         try
         {
             fileWriter = new FileWriter(outputFileName);
-
-            fileWriter.write(printSelfAsCSV());
+            if(bForPrediction)
+                fileWriter.write(printSelfAsCSV(1, flatData.size(), false));
+            else
+                fileWriter.write(printSelfAsCSV());
 
         } catch (IOException ioe)
         {
@@ -181,5 +196,10 @@ public class OHLCSequentialTrainingData {
                  ioe2.printStackTrace();
             }
         }
+    }
+
+    public void generatePredictionCSVFile(String outputFileName)
+    {
+        generateCSVFile(outputFileName, true);
     }
 }
