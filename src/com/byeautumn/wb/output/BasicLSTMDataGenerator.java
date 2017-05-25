@@ -76,7 +76,7 @@ public class BasicLSTMDataGenerator {
 
     }
 
-    public static void generateLSTMTrainingData2(String symbol, List<String> sourceFiles, int numOfExamplesPerSequence)
+    private static OHLCSequentialTrainingData generateOHLCSequentialData(List<String> sourceFiles, int numOfExamplesPerSequence)
     {
         List<OHLCElementTable> rawTables = new ArrayList<>(sourceFiles.size());
         for(String sourceFile : sourceFiles) {
@@ -86,7 +86,13 @@ public class BasicLSTMDataGenerator {
             rawTables.add(bigTable);
         }
         System.out.println("RawTables size: " + rawTables.size());
+        OHLCSequentialTrainingData allTrainData = new OHLCSequentialTrainingData(rawTables);
 
+        return allTrainData;
+    }
+
+    public static void generateLSTMTrainingData2(String symbol, List<String> sourceFiles, int numOfExamplesPerSequence)
+    {
         File outputDir = new File("../../WindBell/WindBell/resources/training/BasicLSTMData/" + symbol);
         if(outputDir.exists())
         {
@@ -104,7 +110,7 @@ public class BasicLSTMDataGenerator {
             return;
         }
 
-        OHLCSequentialTrainingData allTrainData = new OHLCSequentialTrainingData(rawTables);
+        OHLCSequentialTrainingData allTrainData = generateOHLCSequentialData(sourceFiles, numOfExamplesPerSequence);
         List<OHLCSequentialTrainingData> trainDataList = allTrainData.split(numOfExamplesPerSequence);
 
         int pieceCount = 0;
@@ -116,8 +122,37 @@ public class BasicLSTMDataGenerator {
         }
         System.out.println("Total number of csv files generated: " + pieceCount);
 
-        OHLCSequentialTrainingData predictData = trainDataList.get(trainDataList.size() - 1);
+    }
 
+    public static void generateLSTMPredictionData(String symbol, List<String> sourceFiles, int numOfExamplesPerSequence)
+    {
+        File outputDir = new File("../../WindBell/WindBell/resources/predict/BasicLSTMData/" + symbol);
+        if(outputDir.exists())
+        {
+            for (File f : outputDir.listFiles())
+            {
+                if (!f.delete()) {
+                    System.err.println("File " + f.getPath() + " cannot be deleted!");
+                    return;
+                }
+            }
+        }
+        else if(!outputDir.mkdirs())
+        {
+            System.err.println("Folder " + outputDir.getPath() + " cannot be created!");
+            return;
+        }
+
+        OHLCSequentialTrainingData allTrainData = generateOHLCSequentialData(sourceFiles, numOfExamplesPerSequence);
+        List<OHLCSequentialTrainingData> trainDataList = allTrainData.split(numOfExamplesPerSequence);
+
+
+
+        OHLCSequentialTrainingData predictData = trainDataList.get(trainDataList.size() - 1);
+        String outputFileName = Paths.get(outputDir.getAbsolutePath(), "0.csv").toString();
+        predictData.generatePredictionCSVFile(outputFileName);
+
+        System.out.println("The prediction data file has been generated: " + outputFileName);
     }
 
     public static void main(String[] args)

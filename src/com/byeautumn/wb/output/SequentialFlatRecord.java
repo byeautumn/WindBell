@@ -82,6 +82,22 @@ public class SequentialFlatRecord {
         return sb.toString();
     }
 
+    public String printValuesWithDateInfoAsCSV()
+    {
+        if(null == values || values.length < 1)
+            return "";
+
+        StringBuffer sb = new StringBuffer();
+        for(double value : values)
+            sb.append(value).append(",");
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        sb.append(calendar.get(Calendar.DAY_OF_WEEK)).append(",");
+        sb.append(calendar.get(Calendar.MONTH));
+
+        return sb.toString();
+    }
+
     public String printSelf()
     {
         if(null == date || null == values || values.length < 1)

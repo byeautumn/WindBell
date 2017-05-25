@@ -148,7 +148,10 @@ public class OHLCSequentialTrainingData {
                     continue;
             }
 
-            sb.append(flatRecord.printValuesAndLabelWithDateInfoAsCSV());
+            if(bExcludeUnlabeledRecord)
+                sb.append(flatRecord.printValuesAndLabelWithDateInfoAsCSV());
+            else
+                sb.append(flatRecord.printValuesWithDateInfoAsCSV()); //In this case don't include label in the file at all.
             sb.append("\n");
         }
         return sb.toString();
@@ -177,7 +180,7 @@ public class OHLCSequentialTrainingData {
         {
             fileWriter = new FileWriter(outputFileName);
             if(bForPrediction)
-                fileWriter.write(printSelfAsCSV(1, flatData.size(), false));
+                fileWriter.write(printSelfAsCSV(1, flatData.size() - 1, false));
             else
                 fileWriter.write(printSelfAsCSV());
 
