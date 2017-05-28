@@ -43,7 +43,7 @@ public class RunnerConfigFileReader {
             {
                 if(line.isEmpty())
                     continue;
-                if(line.startsWith("//"))
+                if(line.startsWith("//") || line.startsWith("#"))
                     continue;
                 String[] pair = line.trim().split("=");
                 if(pair.length != 2)

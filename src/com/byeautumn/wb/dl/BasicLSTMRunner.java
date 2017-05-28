@@ -2,6 +2,7 @@ package com.byeautumn.wb.dl;
 
 import com.byeautumn.wb.output.BasicLSTMDataGenerator;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.filefilter.FalseFileFilter;
 import org.datavec.api.records.reader.SequenceRecordReader;
 import org.datavec.api.records.reader.impl.csv.CSVSequenceRecordReader;
 import org.datavec.api.split.NumberedFileInputSplit;
@@ -26,7 +27,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.FileFilter;
+import java.io.FilenameFilter;
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -57,6 +61,18 @@ public class BasicLSTMRunner {
         this.rawDataDirName = rawDataDirName;
         this.numFeatures = numFeatures;
     }
+
+    public BasicLSTMRunner(RunnerConfigFileReader configReader)
+    {
+        if(null == configReader)
+        {
+            log.error("Invaid input(s).");
+            return;
+        }
+        this.numLabelClasses = Integer.parseInt(configReader.getProperty("numLabelClasses"));
+        this.rawDataDirName = configReader.getProperty("rawDataDirName");
+    }
+
     private MultiLayerNetwork buildNetwork(int numInput, int numLabelClasses)
     {
         MultiLayerConfiguration conf = new NeuralNetConfiguration.Builder()
@@ -113,18 +129,18 @@ public class BasicLSTMRunner {
         }
     }
 
-    public void trainAndValidate(int numEpochs, boolean bForceRebuildNet)
+    public void trainAndValidate(int numEpochs, boolean bForceRebuildNet, int miniBatchSize)
     {
         if(null == net || bForceRebuildNet)
             net = buildNetwork(numFeatures, numLabelClasses);
 
-        int miniBatchSize = 14;
         buildTrainAndTestDataset(rawDataDirName, 0.9, miniBatchSize);
 
         String str = "Test set evaluation at epoch %d: Accuracy = %.2f, F1 = %.2f";
         for (int i = 0; i < numEpochs; i++) {
             net.fit(trainData);
 
+//            net.output(trainData.)
             //Evaluate on the test set:
             Evaluation evaluation = net.evaluate(testData);
             log.info(String.format(str, i, evaluation.accuracy(), evaluation.f1()));
@@ -138,9 +154,9 @@ public class BasicLSTMRunner {
         System.out.println("----- BasicLSTMRunner Complete -----");
     }
 
-    public void trainAndValidate(int numEpochs)
+    public void trainAndValidate(int numEpochs, int miniBatchSize)
     {
-        trainAndValidate(numEpochs, false);
+        trainAndValidate(numEpochs, false, miniBatchSize);
     }
 
     private void buildTrainAndTestDataset(String rawDataDirName, double trainDataPercentage, int miniBatchSize)
@@ -230,35 +246,8 @@ public class BasicLSTMRunner {
         predictData.setPreProcessor(normalizer);
     }
 
-    public void predict(String inputDataDirName, int miniBaichSize)
+    public static void runTrainAndValidation(RunnerConfigFileReader configReader) throws Exception
     {
-        //Assuming here that the full predict data set doesn't fit in memory -> load 10 examples at a time
-        Map<Integer, String> labelMap = new HashMap<>();
-        labelMap.put(0, " down 4% or more");
-        labelMap.put(1, " down between 1.5% and 4%");
-        labelMap.put(2, " down between 0.5% and 1.5%");
-        labelMap.put(3, " sideways between -0.5% and +0.3%");
-        labelMap.put(4, " up between 0.3% and 1%");
-        labelMap.put(5, " up between 1% and 2%");
-        labelMap.put(6, " up 2% or more");
-
-        Evaluation evaluation = new Evaluation(labelMap);
-
-        buildPredictionDataset(inputDataDirName, miniBaichSize);
-        while(predictData.hasNext()) {
-            DataSet dsPredict = predictData.next();
-            INDArray predicted = net.output(dsPredict.getFeatureMatrix(), false);
-            INDArray actual = dsPredict.getLabels();
-            evaluation.evalTimeSeries(actual, predicted);
-        }
-
-        System.out.println(evaluation.stats());
-    }
-
-    public static void main( String[] args ) throws Exception {
-        RunnerConfigFileReader configReader = new RunnerConfigFileReader("../../WindBell/WindBell/src/com/byeautumn/wb/dl/BasicLSTMRunner.properties");
-        System.out.println(configReader.printSelf());
-
         //Generate Training Data...
         boolean bForceRegenerateTrainingData = Boolean.parseBoolean(configReader.getProperty("forceRegenerateTrainingData"));
         if(bForceRegenerateTrainingData) {
@@ -270,7 +259,7 @@ public class BasicLSTMRunner {
                 return;
             }
 
-            String[] rawSourceFileNames = rawSourceFileNames = rawDataSourceDir.list();
+            String[] rawSourceFileNames = rawDataSourceDir.list();
             System.out.println("The number of raw source files: " + rawSourceFileNames.length);
             for (String rawFileName : rawSourceFileNames)
                 System.out.println(rawFileName);
@@ -291,7 +280,7 @@ public class BasicLSTMRunner {
             BasicLSTMDataGenerator.generateLSTMTrainingData2(symbol, sourceFileNames, numSequencePerGeneratedFile);
         }
 
-        String inputDirName = configReader.getProperty("inputDirName");
+        String inputDirName = configReader.getProperty("trainInputDirName");
         File trainInputDir = new File(inputDirName);
         if(!trainInputDir.exists())
         {
@@ -339,9 +328,10 @@ public class BasicLSTMRunner {
 
         int numLabelClasses = Integer.parseInt(configReader.getProperty("numLabelClasses"));
         int numEpochs = Integer.parseInt(configReader.getProperty("numEpochs"));
-        BasicLSTMRunner runner = new BasicLSTMRunner(inputDirName, numLabelClasses, numFeatures);
+        int miniBatchSize = Integer.parseInt(configReader.getProperty("miniBatchSize"));
 
-        runner.trainAndValidate(numEpochs);
+        BasicLSTMRunner runner = new BasicLSTMRunner(inputDirName, numLabelClasses, numFeatures);
+        runner.trainAndValidate(numEpochs, miniBatchSize);
 
         boolean bSaveModel = Boolean.parseBoolean(configReader.getProperty("saveModel"));
         if(bSaveModel)
@@ -350,6 +340,125 @@ public class BasicLSTMRunner {
             Date now = new Date();
             runner.saveNetwork(new File(networkSaveLocation, String.format("BasicLSTMRunner_%s.zip", new SimpleDateFormat("yyyyMMdd-hhmm").format(now))));
         }
+    }
+
+    private void loadNetworkModel(File modelFile)
+    {
+        if(!modelFile.exists())
+        {
+            System.err.println("The saved network model file doesn't exist: " + modelFile.getAbsolutePath());
+            return;
+        }
+
+        //Load the model
+        try {
+            net = ModelSerializer.restoreMultiLayerNetwork(modelFile);
+        } catch (IOException ioe)
+        {
+            System.err.println(ioe.getStackTrace());
+            return;
+        }
+
+        System.out.println("The saved network model has been successfully loaded: " + modelFile.getAbsolutePath());
+    }
+
+    public void predict(String inputDataDirName, int miniBatchSize)
+    {
+        //Assuming here that the full predict data set doesn't fit in memory -> load 10 examples at a time
+        Map<Integer, String> labelMap = new HashMap<>();
+        labelMap.put(0, " down 4% or more");
+        labelMap.put(1, " down between 1.5% and 4%");
+        labelMap.put(2, " down between 0.5% and 1.5%");
+        labelMap.put(3, " sideways between -0.5% and +0.3%");
+        labelMap.put(4, " up between 0.3% and 1%");
+        labelMap.put(5, " up between 1% and 2%");
+        labelMap.put(6, " up 2% or more");
+
+        Evaluation evaluation = new Evaluation(labelMap);
+
+        buildPredictionDataset(inputDataDirName, miniBatchSize);
+        while(predictData.hasNext()) {
+            DataSet dsPredict = predictData.next();
+            INDArray predicted = net.output(dsPredict.getFeatureMatrix(), false);
+            INDArray actual = dsPredict.getLabels();
+            evaluation.evalTimeSeries(actual, predicted);
+        }
+
+        System.out.println(evaluation.stats());
+    }
+
+    public static void runLoadAndPredict(RunnerConfigFileReader configReader)
+    {
+        String networkSaveLocation = configReader.getProperty("networkSaveLocation");
+        File networkSaveDir = new File(networkSaveLocation);
+        if(!networkSaveDir.exists())
+        {
+            System.err.println("The given network model save directory doesn't exist.");
+            return;
+        }
+
+        String[] savedModelFileNames = networkSaveDir.list(new FilenameFilter() {
+            @Override
+            public boolean accept(File dir, String name) {
+                if(name.endsWith(".zip"))
+                    return true;
+                return false;
+            }
+        });
+
+        if(savedModelFileNames.length < 1)
+        {
+            System.err.println("There is NO valid network model exist under directory: " + networkSaveLocation);
+            return;
+        }
+
+        //Always load the last one (latest one hopefully).
+        String networkModelFileName = savedModelFileNames[savedModelFileNames.length - 1];
+        BasicLSTMRunner runner = new BasicLSTMRunner(configReader);
+        runner.loadNetworkModel(new File(networkSaveLocation, networkModelFileName));
+
+        String symbol = configReader.getProperty("symbol");
+        String rawDataSourceDirName = configReader.getProperty("rawDataSourceDir");
+        File rawDataSourceDir = new File(rawDataSourceDirName);
+        if (!rawDataSourceDir.exists()) {
+            System.err.println("The raw data source directory doesn't exist: " + rawDataSourceDirName);
+            return;
+        }
+
+        String[] rawSourceFileNames = rawDataSourceDir.list();
+
+        String mainSourceFileName = configReader.getProperty("mainSourceFileName");
+        List<String> sourceFileNames = new ArrayList<>();
+        //Make sure add the main source file first.
+        sourceFileNames.add(Paths.get(rawDataSourceDir.getAbsolutePath(), mainSourceFileName).toString());
+
+        for (String rawFileName : rawSourceFileNames) {
+            if (mainSourceFileName.equals(rawFileName))
+                continue;
+            sourceFileNames.add(Paths.get(rawDataSourceDir.getAbsolutePath(), rawFileName).toString());
+            System.out.println("The support file will be loaded: " + rawFileName);
+        }
+        int numSequencePerGeneratedFile = Integer.parseInt(configReader.getProperty("numSequencePerGeneratedFile"));
+        BasicLSTMDataGenerator.generateLSTMPredictionData(symbol, sourceFileNames, numSequencePerGeneratedFile);
+
+        String predictInputDirName = configReader.getProperty("predictInputDirName");
+        File predictInputDir = new File(predictInputDirName);
+        if(!predictInputDir.exists())
+        {
+            System.err.println("The prediction input data are NOT ready yet. Prediction canceled.");
+            return;
+        }
+
+        int miniBatchSize = Integer.parseInt(configReader.getProperty("miniBatchSize"));
+        runner.predict(predictInputDirName, miniBatchSize);
+    }
+
+    public static void main( String[] args ) throws Exception {
+//        RunnerConfigFileReader configReader = new RunnerConfigFileReader("../../WindBell/WindBell/src/com/byeautumn/wb/dl/BasicLSTMRunner.properties");
+//        System.out.println(configReader.printSelf());
+
+//        runTrainAndValidation(configReader);
+//        runLoadAndPredict(configReader);
 
     }
 }

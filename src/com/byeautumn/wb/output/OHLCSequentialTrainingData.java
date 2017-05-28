@@ -6,6 +6,7 @@ import com.byeautumn.wb.data.OHLCElementTable;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 /**
@@ -82,6 +83,7 @@ public class OHLCSequentialTrainingData {
         int featureSize = tableList.size() * feartureSizePerOHLCElement;
         OHLCElementTable mainTable = tableList.get(0);
         List<OHLCElement> mainElemList = mainTable.getOHCLElementsSortedByDate();
+
         for (int timeSeriesIdx = 0; timeSeriesIdx < mainElemList.size(); ++timeSeriesIdx) {
             OHLCElement elem = mainElemList.get(timeSeriesIdx);
             Date date = elem.getDateValue();

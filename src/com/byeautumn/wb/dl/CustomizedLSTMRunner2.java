@@ -1,7 +1,7 @@
 package com.byeautumn.wb.dl;
 
-import com.byeautumn.wb.data.OHLCUtils;
 import com.byeautumn.wb.output.BasicLSTMDataGenerator;
+import com.byeautumn.wb.output.LabelClass7;
 import org.apache.commons.io.FileUtils;
 import org.datavec.api.records.reader.SequenceRecordReader;
 import org.datavec.api.records.reader.impl.csv.CSVSequenceRecordReader;
@@ -21,6 +21,7 @@ import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.deeplearning4j.util.ModelSerializer;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.iterator.DataSetIterator;
 import org.nd4j.linalg.dataset.api.preprocessor.DataNormalization;
 import org.nd4j.linalg.dataset.api.preprocessor.NormalizerStandardize;
@@ -34,16 +35,14 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Random;
 
 /**
  * Created by qiangao on 5/24/2017.
  */
-public class CustomizedLSTMRunner {
+public class CustomizedLSTMRunner2 {
 
     private int detectNumFeaturesFromTrainingData(RunnerConfigFileReader configReader)
     {
@@ -298,11 +297,6 @@ public class CustomizedLSTMRunner {
     public void trainAndValidate(RunnerConfigFileReader configReader, MultiLayerNetwork net)
     {
         //Generate Training Data...
-        boolean bForceRegenerateTrainingData = Boolean.parseBoolean(configReader.getProperty("forceRegenerateTrainingData"));
-        if(bForceRegenerateTrainingData) {
-            this.generateTrainingInputData(configReader);
-        }
-
         int numCrossValidations = Integer.parseInt(configReader.getProperty("numCrossValidations"));
         int numEpochs = Integer.parseInt(configReader.getProperty("numEpochs"));
         int miniBatchSize = Integer.parseInt(configReader.getProperty("miniBatchSize"));
@@ -318,8 +312,9 @@ public class CustomizedLSTMRunner {
             return;
         }
 
+        String[] allFileNames = rawDataDir.list();
         int startIdx = 0;
-        int endIdx = rawDataDir.list().length - 1;
+        int endIdx = allFileNames.length - 1;
         int length = endIdx - startIdx + 1;
         int testStartIdx = (int) Math.round(length * trainDataPercentage);
 
@@ -328,8 +323,6 @@ public class CustomizedLSTMRunner {
             System.err.println("Wrong indexing calculation and buildTrainAndTestDataset function stopped.");
             return;
         }
-        SequenceRecordReader trainFeatures = new CSVSequenceRecordReader();
-        SequenceRecordReader testFeatures = new CSVSequenceRecordReader();
 
         //Cross Validation Iterations.
         for(int idxCV = 0; idxCV < numCrossValidations; ++idxCV)
@@ -340,44 +333,61 @@ public class CustomizedLSTMRunner {
                 shuffuleTrainingData(rawDataDir);
             }
 
-            try {
-                trainFeatures.initialize(new NumberedFileInputSplit(rawDataDir.getAbsolutePath() + "/%d.csv", startIdx, testStartIdx - 1));
-                testFeatures.initialize(new NumberedFileInputSplit(rawDataDir.getAbsolutePath() + "/%d.csv", testStartIdx, endIdx));
-            } catch (IOException ioe)
+            List<String> trainFileNames = new ArrayList<>(testStartIdx);
+            List<String> testFileNames = new ArrayList<>(testStartIdx);
+            int fileIdx = 0;
+            for(String fileName : allFileNames)
             {
-                ioe.printStackTrace();
-                return;
-            } catch (InterruptedException ie)
-            {
-                ie.printStackTrace();
-                return;
+                if(fileIdx < testStartIdx)
+                    trainFileNames.add(fileName);
+                else
+                    testFileNames.add(fileName);
+                ++fileIdx;
             }
 
-            int numFeatures = detectNumFeaturesFromTrainingData(configReader);
-            int numLabelClasses = Integer.parseInt(configReader.getProperty("numLabelClasses"));
-            DataSetIterator trainData = new SequenceRecordReaderDataSetIterator(trainFeatures, miniBatchSize, numLabelClasses, numFeatures, false);
-            DataSetIterator testData = new SequenceRecordReaderDataSetIterator(testFeatures, miniBatchSize, numLabelClasses, numFeatures, false);
+            DataSetIterator trainData = new MaskableLSTMDataSetIterator(rawDataDirName, trainFileNames, miniBatchSize, new LabelClass7());
+            DataSetIterator testData = new MaskableLSTMDataSetIterator(rawDataDirName, testFileNames, miniBatchSize, new LabelClass7());
 
-            //Normalization. Is it needed?
-            //Normalize the training data
-            DataNormalization normalizer = new NormalizerStandardize();
-            normalizer.fit(trainData);              //Collect training data statistics
-            trainData.reset();
-
-            //Use previously collected statistics to normalize on-the-fly. Each DataSet returned by 'trainData' iterator will be normalized
-            trainData.setPreProcessor(normalizer);
-            testData.setPreProcessor(normalizer);   //Note that we are using the exact same normalization process as the training data
+//            //Normalization. Is it needed?
+//            //Normalize the training data
+//            DataNormalization normalizer = new NormalizerStandardize();
+//            normalizer.fit(trainData);              //Collect training data statistics
+//            trainData.reset();
+//
+//            //Use previously collected statistics to normalize on-the-fly. Each DataSet returned by 'trainData' iterator will be normalized
+//            trainData.setPreProcessor(normalizer);
+//            testData.setPreProcessor(normalizer);   //Note that we are using the exact same normalization process as the training data
             String str = "Test set evaluation at epoch %d: Accuracy = %.2f, F1 = %.2f";
             String str2 = "Test set evaluation at epoch %d: Precision = %.2f, Recall = %.2f";
             for (int i = 0; i < numEpochs; i++) {
                 net.fit(trainData);
 
-                //Evaluate on the test set:
-                Evaluation evaluation = net.evaluate(testData);
+//                //Evaluate on the test set:
+//                Evaluation evaluation = net.evaluate(testData);
+//                System.out.println(String.format(str, i, evaluation.accuracy(), evaluation.f1()));
+//                System.out.println(String.format(str2, i, evaluation.precision(), evaluation.recall()));
+                Evaluation evaluation = new Evaluation();
+                int count = 0;
+                while (testData.hasNext()) {
+                    DataSet t = testData.next();
+                    INDArray features = t.getFeatureMatrix();
+                    INDArray lables = t.getLabels();
+                    INDArray predicted = net.output(features, true);
+                    if(count == 0) {
+                        System.out.println("++++++++++++++++++++++ Predicted ++++++++++++++++++++++++++");
+                        System.out.println("predict rank: " + predicted.rank());
+                        System.out.println(DataUtils.printINDArray(predicted));
+                        System.out.println("++++++++++++++++++++++ Predicted ++++++++++++++++++++++++++");
+                        System.out.println("++++++++++++++++++++++ labels ++++++++++++++++++++++++++");
+                        System.out.println("lables rank: " + lables.rank());
+                        System.out.println(DataUtils.printINDArray(lables));
+                        System.out.println("++++++++++++++++++++++ labels ++++++++++++++++++++++++++");
+                    }
+                    evaluation.evalTimeSeries(lables, predicted);
+                    ++count;
+                }
                 System.out.println(String.format(str, i, evaluation.accuracy(), evaluation.f1()));
                 System.out.println(String.format(str2, i, evaluation.precision(), evaluation.recall()));
-
-
                 testData.reset();
                 trainData.reset();
             } //Epoch Iterations.
@@ -509,14 +519,14 @@ public class CustomizedLSTMRunner {
         return sb.toString();
     }
     public static void main( String[] args ) throws Exception {
-        RunnerConfigFileReader configReader = new RunnerConfigFileReader("../../WindBell/WindBell/src/com/byeautumn/wb/dl/CustomizedLSTMRunner.properties");
+        RunnerConfigFileReader configReader = new RunnerConfigFileReader("../../WindBell/WindBell/src/com/byeautumn/wb/dl/CustomizedLSTMRunner2.properties");
         System.out.println(configReader.printSelf());
 
-        CustomizedLSTMRunner runner = new CustomizedLSTMRunner();
+        CustomizedLSTMRunner2 runner = new CustomizedLSTMRunner2();
         runner.generateTrainingInputData(configReader);
         MultiLayerNetwork net = runner.buildNetworkModel(configReader);
         runner.trainAndValidate(configReader, net);
-        runner.predict(configReader, net);
+//        runner.predict(configReader, net);
 
 
     }

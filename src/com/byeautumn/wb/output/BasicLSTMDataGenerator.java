@@ -81,6 +81,8 @@ public class BasicLSTMDataGenerator {
         List<OHLCElementTable> rawTables = new ArrayList<>(sourceFiles.size());
         for(String sourceFile : sourceFiles) {
             OHLCElementTable bigTable = OHLCUtils.readOHLCDataSourceFile(sourceFile);
+            //NOTE: normalize it here...
+//            bigTable.normalizeDataByYearRange();
             System.out.println("Big table size: " + bigTable.size());
 
             rawTables.add(bigTable);
@@ -111,6 +113,7 @@ public class BasicLSTMDataGenerator {
         }
 
         OHLCSequentialTrainingData allTrainData = generateOHLCSequentialData(sourceFiles, numOfExamplesPerSequence);
+
         List<OHLCSequentialTrainingData> trainDataList = allTrainData.split(numOfExamplesPerSequence);
 
         int pieceCount = 0;
